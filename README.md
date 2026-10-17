@@ -6,7 +6,7 @@
 
 USB-Blaster IIs die young on production benches. Every tug on the USB cable goes through the plug into the receptacle's solder joints, until they crack. BLASTERPROOF II closes the programmer in a snap-fit shell and clamps the cable jacket to a tail on that shell, so bending and pulling loads travel through plastic instead of through the connector.
 
-Part of the **BLASTERPROOF** family. A USB-Blaster III version is planned as `blasterproof-iii`.
+Part of the **BLASTERPROOF** family. For the USB Blaster III, see [BlasterProof-III](https://github.com/YannyOh/BlasterProof-III).
 
 ## At a glance
 
