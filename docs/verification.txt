@@ -1,0 +1,28 @@
+== interference ==
+shell & cover overlap : 0.0000 mm^3   (want 0)
+device & shell overlap: 0.0000 mm^3   (want 0)
+device & cover overlap: 0.0000 mm^3   (want 0)
+cap & shell   overlap: 0.0000 mm^3   (want 0)
+cable bite into shell:   8.43 mm^3   (ribs only -- small, >0)
+cable bite into cap  :   5.23 mm^3   (ribs only -- small, >0)
+screw at y=+8.0: wall to groove 2.50 (insert, at the mouth), wall to tail edge 2.00 (insert)
+screw at y=-8.0: wall to groove 2.50 (insert, at the mouth), wall to tail edge 2.00 (insert)
+
+== key clearances (mm) ==
+pod clearance X/Y per side   : 0.6
+pod clearance Z top/bottom   : 0.5
+tongue/rabbet per side       : 0.2
+snap barb engagement         : 0.90
+arm deflection to release    : 0.90
+material outboard of window  : 2.70
+clip arm  9.0 x 1.9 x 13.0 (w x t x free length)
+cable bore diameter          : 4.20 for a 4.0 jacket, ribs pinch to 3.30
+USB opening (typeB)       : 16.0 wide, z 4.0..18.5, recess 22.0 wide x 1.6 deep (end wall thins to 1.2)
+ribbon slot                  : 16.0 x 3.6, flared to 20.0 x 7.6 at the mouth
+outer size (body only)       : 70.3 x 48.2 x 25.6
+
+== overhang audit, as printed ==
+shell_selftap  overhang >45deg:   115.8 mm2 ( 0.6% of area)   horizontal ceilings:  113.3 mm2
+shell_insert   overhang >45deg:   115.8 mm2 ( 0.6% of area)   horizontal ceilings:  113.3 mm2
+cover          overhang >45deg:     4.6 mm2 ( 0.0% of area)   horizontal ceilings:    3.6 mm2
+clamp_cap      overhang >45deg:     0.0 mm2 ( 0.0% of area)   horizontal ceilings:    0.0 mm2

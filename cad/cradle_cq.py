@@ -1,5 +1,5 @@
 """
-USB-Blaster II enclosure  --  parametric CadQuery model  (v2)
+BLASTERPROOF II  --  USB-Blaster II enclosure, parametric CadQuery model  (v2.2)
 
 Coordinate system
 -----------------
@@ -13,7 +13,18 @@ Parts produced
   shell       -- bottom tray, cradles the pod, carries the strain-relief tail
   cover       -- top lid with four cantilever snap clips
   clamp_cap   -- top half of the cable saddle
-  screws      -- two printable self-tapping thumb screws (printed as one plate)
+  (hardware)  -- 2x bought M3 screws; the shell is exported in two variants:
+                   shell_selftap : 2.5 mm pilots for M3 / ST3 self-tapping screws
+                   shell_insert  : 4.0 mm pockets for M3 brass heat-set inserts
+
+v2.2 changes vs v2.1
+--------------------
+  * cable groove now runs ALONG the cable (X), not across it (v2.1 bug)
+  * cable axis raised to the pod's mid-height (12.8 mm) so the cable leaves
+    the plug dead straight; tail lengthened 36 -> 41 mm
+  * bell-mouth flare at both ends of the groove so the jacket never kinks
+    over a sharp edge
+  * printed screws dropped (too weak) -- metal M3 hardware instead
 
 Everything below the ==== PARAMETERS ==== line is meant to be edited.
 Re-run the file after any change; it rewrites every export.
@@ -24,8 +35,10 @@ import math
 import cadquery as cq
 from cadquery import exporters
 
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "out")
-os.makedirs(OUT, exist_ok=True)
+HERE = os.path.dirname(os.path.abspath(__file__))
+STEP_DIR = os.path.join(HERE, "step")                         # assembly coordinates
+PRINT_DIR = os.path.join(os.path.dirname(HERE), "print")      # STL + 3MF, bed-oriented
+os.makedirs(STEP_DIR, exist_ok=True); os.makedirs(PRINT_DIR, exist_ok=True)
 
 # =====================================================================
 # ==== PARAMETERS =====================================================
@@ -95,19 +108,23 @@ RIB_H = 3.6           # slot height
 RIB_FLARE = 2.0       # extra height at the outside mouth
 
 # ---- strain relief: flat tail + saddle + cap + 2 screws --------------
-SR_TAIL_L = 36.0      # tail length -- must clear USB_BOOT_L, see assert below
+SR_TAIL_L = 41.0      # tail length -- must clear USB_BOOT_L, see assert below
 SR_TAIL_W = 24.0
 SR_TAIL_T = 3.4       # tail thickness (sits flat on the bed / on the desk)
 SR_SADDLE_L = 13.0    # length of the clamp block along X
-SR_SADDLE_T = 5.6     # height of the clamp block above the tail
+SR_SADDLE_T = 9.4     # height of the clamp block above the tail
+                      # (3.4 + 9.4 = 12.8 = pod mid-height = plug axis)
 CABLE_D = 4.0         # USB cable jacket diameter -- MEASURE YOURS
 GRIP_RIB = 0.45       # how far the grip ribs bite into the jacket
-SCREW_D = 4.0         # thread major diameter
-SCREW_P = 1.6         # thread pitch
-SCREW_THREAD_L = 12.0
-SCREW_HEAD_D = 9.0
-SCREW_HEAD_T = 3.5
-PILOT_D = 2.70        # self-tapping pilot core in the saddle base
+BELL_L = 2.2          # length of the bell-mouth flare at each groove end
+BELL_R = 1.4          # extra radius at the mouth
+SCREW_Y = 8.0         # screws sit +/- this far either side of the cable
+CAP_HOLE_D = 3.4      # M3 clearance through the cap
+PILOT_D = 2.50        # shell_selftap: pilot for M3 / ST3 self-tapping screws
+INSERT_D = 4.0        # shell_insert: hole for a M3 heat-set insert (OD ~4.6)
+INSERT_DEPTH = 6.5    # insert is 5.7 long; 0.8 mm spare for melt-back
+RELIEF_D = 3.2        # below the insert, room for a long screw tip
+HOLE_BOTTOM = 1.0     # all screw holes stop this far above the bed
 
 # ---- grip scallops so you can get a fingernail in --------------------
 GRIP_W = 12.0
@@ -156,9 +173,7 @@ SAD_X0 = SR_X1 - SR_SADDLE_L
 SAD_XC = (SAD_X0 + SAD_X1) / 2.0
 SPLIT_Z = SR_TAIL_T + SR_SADDLE_T      # cable axis height
 BORE_R = CABLE_D / 2.0 + 0.10
-SCREW_XY = [(SAD_XC - 4.6, 8.0), (SAD_XC - 4.6, -8.0),
-            (SAD_XC + 4.6, 8.0), (SAD_XC + 4.6, -8.0)]
-SCREW_XY = [(SAD_XC, 8.0), (SAD_XC, -8.0)]   # two screws, one each side
+SCREW_XY = [(SAD_XC, SCREW_Y), (SAD_XC, -SCREW_Y)]   # one each side
 
 assert ARM_Z0 < BARB_Z0, "clip arm is shorter than the barb position"
 assert PAD_Y1 - POCK_Y1 >= 2.0, "not enough material left outboard of the window"
@@ -169,6 +184,9 @@ assert 0.05 < WIN_Z1 - (BARB_Z0 + BARB_RAMP) < BARB_CATCH, \
     "window top edge is not on the catch face"
 assert SAD_X0 >= X_OUT + USB_BOOT_L + 2.0, \
     "cable saddle would foul the plug boot -- increase SR_TAIL_L"
+assert SR_TAIL_W / 2.0 - (SCREW_Y + INSERT_D / 2.0) >= 1.8, \
+    "less than 1.8 mm of wall outside the insert pocket"
+assert SCREW_Y - INSERT_D / 2.0 > BORE_R + BELL_R, "insert pocket breaks into the groove"
 
 
 # =====================================================================
@@ -266,11 +284,39 @@ def grip_cut():
     return c
 
 
+def cable_groove(z_axis, r):
+    """Cable bore along X through the saddle, with a bell mouth at each end."""
+    straight = (cq.Workplane("YZ").workplane(offset=SAD_X0 - 1.0)
+                .center(0, z_axis).circle(r).extrude(SR_SADDLE_L + 2.0))
+    g = straight
+    for x_face, d in ((SAD_X0, +1), (SAD_X1, -1)):
+        # cone: wide at the face, BORE size BELL_L inside
+        bell = (cq.Workplane("YZ").workplane(offset=x_face - d * 0.5)
+                .center(0, z_axis).circle(r + BELL_R + 0.5 * BELL_R / BELL_L)
+                .workplane(offset=d * (BELL_L + 0.5)).circle(r).loft())
+        g = g.union(bell)
+    return g
+
+
+def grip_ribs(z_axis, dxs, keep_below):
+    """Thin rings left standing inside the bore; keep the half on our side."""
+    out = None
+    for dx in dxs:
+        ring = (cq.Workplane("YZ").workplane(offset=SAD_XC + dx - 0.7)
+                .center(0, z_axis).circle(BORE_R).circle(BORE_R - GRIP_RIB)
+                .extrude(1.4))
+        half = (cq.Workplane("XY").workplane(offset=z_axis - (10.0 if keep_below else 0.0))
+                .center(SAD_XC + dx, 0).rect(2.0, SR_TAIL_W).extrude(10.0))
+        r = ring.intersect(half)
+        out = r if out is None else out.union(r)
+    return out
+
+
 # =====================================================================
 # ==== SHELL ==========================================================
 # =====================================================================
 
-def make_shell():
+def make_shell(hardware="selftap"):
     s = outer_block(0, JOINT_Z)
 
     # clip bosses on the outside
@@ -320,28 +366,25 @@ def make_shell():
     if lc is not None:
         s = s.cut(lc)
 
-    # cable groove in the saddle + pilot cores
-    groove = (cq.Workplane("XZ").workplane(offset=-(SR_TAIL_W / 2.0 + 2.0))
-              .center(SAD_XC, SPLIT_Z)
-              .circle(BORE_R).extrude(SR_TAIL_W + 4.0))
-    above = (cq.Workplane("XY").workplane(offset=SPLIT_Z)
-             .center(SAD_XC, 0).rect(SR_SADDLE_L + 4, SR_TAIL_W + 4)
-             .extrude(10.0))
-    s = s.cut(groove.cut(above))
-    # grip ribs: three shallow ridges left standing inside the groove
-    for dx in (-3.9, 0.0, 3.9):
-        rib = (cq.Workplane("XZ").workplane(offset=-(SR_TAIL_W / 2.0 + 2.0))
-               .center(SAD_XC + dx, SPLIT_Z)
-               .circle(BORE_R).circle(BORE_R - GRIP_RIB)
-               .extrude(SR_TAIL_W + 4.0))
-        band = (cq.Workplane("XY")
-                .center(SAD_XC + dx, 0).rect(1.4, SR_TAIL_W - 0.6).extrude(SPLIT_Z))
-        s = s.union(rib.intersect(band).cut(above))
+    # cable groove along X, lower half lives in the saddle
+    s = s.cut(cable_groove(SPLIT_Z, BORE_R))
+    s = s.union(grip_ribs(SPLIT_Z, (-4.0, 0.0, 4.0), keep_below=True))
 
+    # screw holes for bought M3 hardware
     for (px, py) in SCREW_XY:
-        s = s.cut(cq.Workplane("XY").workplane(offset=SPLIT_Z - (SR_TAIL_T + SR_SADDLE_T - 1.0))
-                  .center(px, py).circle(PILOT_D / 2.0)
-                  .extrude(SR_TAIL_T + SR_SADDLE_T - 1.0 + 0.01))
+        if hardware == "selftap":
+            s = s.cut(cq.Workplane("XY").workplane(offset=HOLE_BOTTOM)
+                      .center(px, py).circle(PILOT_D / 2.0)
+                      .extrude(SPLIT_Z - HOLE_BOTTOM + 0.01))
+        elif hardware == "insert":
+            s = s.cut(cq.Workplane("XY").workplane(offset=SPLIT_Z - INSERT_DEPTH)
+                      .center(px, py).circle(INSERT_D / 2.0)
+                      .extrude(INSERT_DEPTH + 0.01))
+            s = s.cut(cq.Workplane("XY").workplane(offset=HOLE_BOTTOM)
+                      .center(px, py).circle(RELIEF_D / 2.0)
+                      .extrude(SPLIT_Z - INSERT_DEPTH - HOLE_BOTTOM + 0.01))
+        else:
+            raise ValueError(hardware)
 
     # break the sharp outer edges a little
     try:
@@ -404,72 +447,18 @@ def make_cap():
            .rect(SR_SADDLE_L, SR_TAIL_W).extrude(cap_t)
            .edges("|Z").fillet(3.0))
 
-    groove = (cq.Workplane("XZ").workplane(offset=-(SR_TAIL_W / 2.0 + 2.0))
-              .center(SAD_XC, SPLIT_Z + FIT)
-              .circle(BORE_R).extrude(SR_TAIL_W + 4.0))
-    cap = cap.cut(groove)
-    for dx in (-1.95, 1.95):
-        rib = (cq.Workplane("XZ").workplane(offset=-(SR_TAIL_W / 2.0 + 2.0))
-               .center(SAD_XC + dx, SPLIT_Z + FIT)
-               .circle(BORE_R).circle(BORE_R - GRIP_RIB)
-               .extrude(SR_TAIL_W + 4.0))
-        band = (cq.Workplane("XY").workplane(offset=SPLIT_Z + FIT)
-                .center(SAD_XC + dx, 0).rect(1.4, SR_TAIL_W - 0.6).extrude(cap_t))
-        cap = cap.union(rib.intersect(band))
+    # upper half of the bore -- same axis as the saddle, so with the 0.2 mm
+    # gap closed by the screws the two halves pinch the jacket
+    cap = cap.cut(cable_groove(SPLIT_Z, BORE_R))
+    cap = cap.union(grip_ribs(SPLIT_Z, (-2.25, 2.25), keep_below=False)
+                    .intersect(cq.Workplane("XY").workplane(offset=SPLIT_Z + FIT)
+                               .center(SAD_XC, 0).rect(SR_SADDLE_L, SR_TAIL_W).extrude(cap_t)))
 
     for (px, py) in SCREW_XY:
         cap = cap.cut(cq.Workplane("XY").workplane(offset=SPLIT_Z + FIT - 1)
-                      .center(px, py).circle(SCREW_D / 2.0 + 0.35)
+                      .center(px, py).circle(CAP_HOLE_D / 2.0)
                       .extrude(cap_t + 2))
     return cap.translate((0, 0, -(SPLIT_Z + FIT)))
-
-
-# =====================================================================
-# ==== SCREWS =========================================================
-# =====================================================================
-
-def make_screw():
-    r_maj = SCREW_D / 2.0
-    r_min = r_maj - 0.55 * SCREW_P
-    core = cq.Workplane("XY").circle(r_min + 0.15).extrude(SCREW_THREAD_L)
-
-    # triangular thread profile swept along a helix
-    h = SCREW_THREAD_L
-    helix = cq.Wire.makeHelix(pitch=SCREW_P, height=h, radius=r_min)
-    prof = (cq.Workplane("XZ")
-            .polyline([(r_min - 0.05, -SCREW_P * 0.34),
-                       (r_maj, 0.0),
-                       (r_min - 0.05, SCREW_P * 0.34)]).close())
-    thread = prof.sweep(cq.Workplane(obj=helix), isFrenet=True)
-    body = core.union(thread)
-
-    # trim flush at both ends and taper the tip so it starts into the pilot hole
-    tip = (cq.Workplane("XY").circle(r_min - 0.55)
-           .workplane(offset=1.8).circle(r_maj + 1.0).loft())
-    envelope = (cq.Workplane("XY").workplane(offset=1.8)
-                .circle(r_maj + 1.0).extrude(h - 1.8).union(tip))
-    body = body.intersect(envelope)
-
-    head = (cq.Workplane("XY").workplane(offset=h)
-            .circle(SCREW_HEAD_D / 2.0).extrude(SCREW_HEAD_T))
-    # knurl the head so fingers can turn it
-    n = 14
-    for i in range(n):
-        a = 2 * math.pi * i / n
-        head = head.cut(
-            cq.Workplane("XY").workplane(offset=h - 0.1)
-            .center(math.cos(a) * SCREW_HEAD_D / 2.0,
-                    math.sin(a) * SCREW_HEAD_D / 2.0)
-            .circle(0.9).extrude(SCREW_HEAD_T + 0.2))
-    # flat-blade slot as a backup for a coin / screwdriver
-    head = head.cut(cq.Workplane("XY").workplane(offset=h + SCREW_HEAD_T - 1.4)
-                    .rect(SCREW_HEAD_D - 1.5, 1.6).extrude(1.6))
-    return body.union(head)
-
-
-def make_screw_plate():
-    s1 = make_screw()
-    return s1.translate((-11, 0, 0)).union(s1.translate((11, 0, 0)))
 
 
 # =====================================================================
@@ -478,7 +467,8 @@ def make_screw_plate():
 
 # Which way each part wants to sit on the bed.  STEP keeps assembly
 # coordinates; STL and 3MF come out already oriented for printing.
-FLIP = {"cover": True, "clamp_cap": True, "screws_x2": True, "shell": False}
+FLIP = {"cover": True, "clamp_cap": True,
+        "shell_selftap": False, "shell_insert": False}
 
 
 def to_print_orientation(obj, name):
@@ -492,11 +482,11 @@ def to_print_orientation(obj, name):
 
 def export(obj, name):
     paths = []
-    p = os.path.join(OUT, f"{name}.step")
+    p = os.path.join(STEP_DIR, f"{name}.step")
     exporters.export(obj.val(), p); paths.append(p)
     mesh = to_print_orientation(obj, name).val()
     for ext in ("stl", "3mf"):
-        p = os.path.join(OUT, f"{name}.{ext}")
+        p = os.path.join(PRINT_DIR, f"{name}.{ext}")
         try:
             exporters.export(mesh, p, tolerance=0.008, angularTolerance=0.1)
             paths.append(p)
@@ -507,14 +497,14 @@ def export(obj, name):
 
 if __name__ == "__main__":
     parts = {}
-    print("shell  ...");      parts["shell"] = make_shell()
-    print("cover  ...");      parts["cover"] = make_cover()
-    print("clamp_cap ...");   parts["clamp_cap"] = make_cap()
-    print("screws ...");      parts["screws_x2"] = make_screw_plate()
+    print("shell (self-tap) ..."); parts["shell_selftap"] = make_shell("selftap")
+    print("shell (insert)   ..."); parts["shell_insert"] = make_shell("insert")
+    print("cover  ...");            parts["cover"] = make_cover()
+    print("clamp_cap ...");         parts["clamp_cap"] = make_cap()
 
     for n, p in parts.items():
         bb = p.val().BoundingBox()
-        print(f"{n:12s} {bb.xlen:6.2f} x {bb.ylen:6.2f} x {bb.zlen:6.2f} mm"
+        print(f"{n:14s} {bb.xlen:6.2f} x {bb.ylen:6.2f} x {bb.zlen:6.2f} mm"
               f"   vol {p.val().Volume()/1000:7.2f} cm3")
         export(p, n)
-    print("done ->", OUT)
+    print("done ->", STEP_DIR, "and", PRINT_DIR)

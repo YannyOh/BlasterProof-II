@@ -1,8 +1,9 @@
 """Sanity checks on the generated solids."""
-import numpy as np, trimesh, cadquery as cq
+import os, sys, numpy as np, trimesh, cadquery as cq
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cradle_cq as M
 
-sh = M.make_shell(); cv = M.make_cover(); cp = M.make_cap()
+sh = M.make_shell("selftap"); si = M.make_shell("insert"); cv = M.make_cover(); cp = M.make_cap()
 
 print("== interference ==")
 inter = sh.intersect(cv)
@@ -21,6 +22,28 @@ for name, part in (("shell", sh), ("cover", cv)):
     except Exception:
         vv = 0.0
     print(f"device & {name:5s} overlap: {vv:.4f} mm^3   (want 0)")
+
+for name, part in (("cap & shell", cp.translate((0, 0, M.SPLIT_Z + M.FIT))),):
+    try:
+        vv = sh.intersect(part).val().Volume()
+    except Exception:
+        vv = 0.0
+    print(f"{name:13s} overlap: {vv:.4f} mm^3   (want 0)")
+
+# a nominal cable through the saddle: should touch only the grip ribs
+cable = (cq.Workplane("YZ").workplane(offset=M.SAD_X0 - 2).center(0, M.SPLIT_Z)
+         .circle(M.CABLE_D / 2.0).extrude(M.SR_SADDLE_L + 4))
+capA = cp.translate((0, 0, M.SPLIT_Z + M.FIT))
+for name, part in (("shell", sh), ("cap", capA)):
+    try:
+        vv = part.intersect(cable).val().Volume()
+    except Exception:
+        vv = 0.0
+    print(f"cable bite into {name:5s}: {vv:6.2f} mm^3   (ribs only -- small, >0)")
+for (px, py) in M.SCREW_XY:
+    print(f"screw at y={py:+.1f}: wall to groove "
+          f"{abs(py) - M.INSERT_D/2 - M.BORE_R - M.BELL_R:.2f} (insert, at the mouth), "
+          f"wall to tail edge {M.SR_TAIL_W/2 - abs(py) - M.INSERT_D/2:.2f} (insert)")
 
 print("\n== key clearances (mm) ==")
 print(f"pod clearance X/Y per side   : {M.CLR_XY}")
@@ -41,8 +64,8 @@ print(f"outer size (body only)       : {M.OUT_L} x {M.OUT_W} x {M.OUT_H}")
 
 print("\n== overhang audit, as printed ==")
 # rotation applied to each part to get it onto the bed
-for name in ("shell", "cover", "clamp_cap", "screws_x2"):
-    m = trimesh.load(f"out/{name}.stl")   # already in print orientation
+for name in ("shell_selftap", "shell_insert", "cover", "clamp_cap"):
+    m = trimesh.load(os.path.join(M.PRINT_DIR, f"{name}.stl"))   # already in print orientation
     m.apply_translation([0, 0, -m.bounds[0][2]])   # drop onto the bed
     n = m.face_normals
     a = m.area_faces
@@ -53,6 +76,6 @@ for name in ("shell", "cover", "clamp_cap", "screws_x2"):
     ang = np.degrees(np.arcsin(np.clip(-n[:, 2], 0, 1)))
     bad = down & (ang > 45.0)            # steeper than 45 deg overhang
     flat = down & (ang > 89.0)           # true bridges / ceilings
-    print(f"{name:10s} overhang >45deg: {a[bad].sum():7.1f} mm2 "
+    print(f"{name:14s} overhang >45deg: {a[bad].sum():7.1f} mm2 "
           f"({100*a[bad].sum()/a.sum():4.1f}% of area)   "
           f"horizontal ceilings: {a[flat].sum():6.1f} mm2")
