@@ -71,4 +71,4 @@ python tools/render.py && python tools/drawing.py && python tools/build_ppd_pdf.
 
 ## Status
 
-Rev **2.2**, see [CHANGELOG](CHANGELOG.md). The geometry has been verified in CAD (zero interference, support-free). Not yet first-article printed in v2.2 form.
+Rev **2.2**, see [CHANGELOG](CHANGELOG.md). v2.1 has been printed and tested in daily use; v2.2 refines the cable path and screw mounting, and its geometry has been verified in CAD (zero interference, support-free).
